@@ -16,6 +16,7 @@ const MIN_TERMINAL_ROWS = 5;
 const MIN_STABLE_FONT_SIZE = 6;
 const MAX_STABLE_FONT_SIZE = 16;
 const TAILSCALE_RUNNING = 6;
+const EXIT_NODE_DISCOVERY_TIMEOUT_MS = 20_000;
 const OUTER_SCROLLBACK_LINES = 1000;
 const HOST_GUARD_COLS = 1;
 const GUEST_HOSTNAME = 'Riyo-WebTUIOS';
@@ -36,8 +37,10 @@ let pendingLoginUrl = null;
 let loginActionResolve = null;
 let loginUrlResolve;
 let networkRunningResolve;
+let exitNodeReadyResolve;
 let networkState = null;
 let networkIp = null;
+let exitNodeReady = false;
 let lastLockedViewportKey = '';
 let webglAddon = null;
 
@@ -46,6 +49,9 @@ const loginUrlPromise = new Promise((resolve) => {
 });
 const networkRunningPromise = new Promise((resolve) => {
   networkRunningResolve = resolve;
+});
+const exitNodeReadyPromise = new Promise((resolve) => {
+  exitNodeReadyResolve = resolve;
 });
 
 const BROWSER_SHORTCUTS_TO_TERMINAL = new Set([
@@ -414,6 +420,18 @@ function createNetworkInterface() {
     netmapUpdateCb(map) {
       networkIp = map?.self?.addresses?.[0] || null;
       if (networkIp) console.info(`WebTUIOS Tailscale IP: ${networkIp}`);
+
+      // CheerpX/WebVM uses an advertised Tailnet Exit Node to provide public
+      // Internet access to the browser VM. Reaching the Tailscale Running
+      // state only proves Tailnet connectivity; it does not prove that DNS or
+      // public TCP routing is ready. Wait for the netmap to contain at least
+      // one peer advertised as an Exit Node before booting TUIOS.
+      const peers = Array.isArray(map?.peers) ? map.peers : [];
+      if (!exitNodeReady && peers.some((peer) => Boolean(peer?.exitNode))) {
+        exitNodeReady = true;
+        console.info('WebTUIOS: Tailscale Exit Node is available.');
+        exitNodeReadyResolve(true);
+      }
     }
   };
 
@@ -493,6 +511,70 @@ function waitForLoginAction(url) {
   });
 }
 
+function waitForExitNodeAction() {
+  writeLine('');
+  writeLine('Tailnet is connected, but no online Exit Node is advertised yet.');
+  writeLine('Press Enter to keep waiting, or S to boot without public Internet.');
+
+  return new Promise((resolve) => {
+    prebootInputHandler = (data) => {
+      if (data === '\r' || data === '\n') {
+        resolve('retry');
+        return true;
+      }
+
+      if (data.toLowerCase() === 's' || data === '\x1b') {
+        resolve('skip');
+        return true;
+      }
+
+      return true;
+    };
+  }).finally(() => {
+    prebootInputHandler = null;
+  });
+}
+
+async function waitForExitNodeBeforeBoot() {
+  if (exitNodeReady) return true;
+
+  terminal.clear();
+  writeLine(networkIp
+    ? `Tailscale connected: ${networkIp}`
+    : 'Tailscale connected.');
+  writeLine('Waiting for a Tailscale Exit Node before enabling public Internet...');
+
+  while (!exitNodeReady) {
+    const result = await Promise.race([
+      exitNodeReadyPromise.then(() => 'ready'),
+      new Promise((resolve) => {
+        setTimeout(() => resolve('timeout'), EXIT_NODE_DISCOVERY_TIMEOUT_MS);
+      })
+    ]);
+
+    if (result === 'ready' || exitNodeReady) break;
+
+    const action = await waitForExitNodeAction();
+    if (action === 'skip') {
+      writeLine('Continuing without public Internet for this boot.');
+      return false;
+    }
+
+    terminal.clear();
+    writeLine(networkIp
+      ? `Tailscale connected: ${networkIp}`
+      : 'Tailscale connected.');
+    writeLine('Still waiting for an online Tailscale Exit Node...');
+  }
+
+  terminal.clear();
+  writeLine(networkIp
+    ? `Tailscale connected: ${networkIp}`
+    : 'Tailscale connected.');
+  writeLine('Exit Node detected. Public Internet routing is ready.');
+  return true;
+}
+
 async function connectNetworkBeforeBoot() {
   terminal.clear();
   writeLine('Starting WebTUIOS networking...');
@@ -514,33 +596,30 @@ async function connectNetworkBeforeBoot() {
     new Promise((resolve) => setTimeout(() => resolve({ kind: 'slow' }), 12_000))
   ]);
 
-  if (first.kind === 'running') {
-    localStorage.setItem('webtuios.tailscale.connected', '1');
-    return true;
-  }
-
   if (first.kind === 'slow') {
     writeLine('Tailscale is still starting; continuing with local-only Linux.');
     void loginCall;
     return false;
   }
 
-  const action = await waitForLoginAction(first.url);
-  if (action === 'skip') return false;
+  if (first.kind === 'login') {
+    const action = await waitForLoginAction(first.url);
+    if (action === 'skip') return false;
+  }
 
   try {
-    await Promise.race([networkRunningPromise, timeout(10 * 60 * 1000)]);
-    localStorage.setItem('webtuios.tailscale.connected', '1');
-    terminal.clear();
-    writeLine(networkIp
-      ? `Tailscale connected: ${networkIp}`
-      : 'Tailscale connected.');
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    return true;
+    if (networkState !== TAILSCALE_RUNNING) {
+      await Promise.race([networkRunningPromise, timeout(10 * 60 * 1000)]);
+    }
   } catch {
     writeLine('Tailscale login timed out; continuing with local-only Linux.');
     return false;
   }
+
+  // Do not mistake Tailnet connectivity for Internet connectivity. CheerpX
+  // needs a Tailnet Exit Node for public TCP/DNS, so wait for the netmap to
+  // advertise one instead of relying on an arbitrary post-login delay.
+  return waitForExitNodeBeforeBoot();
 }
 
 async function boot(nerdFontReady) {
