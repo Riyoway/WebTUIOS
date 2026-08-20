@@ -20,7 +20,7 @@ const EXIT_NODE_DISCOVERY_TIMEOUT_MS = 20_000;
 const OUTER_SCROLLBACK_LINES = 1000;
 const HOST_GUARD_COLS = 1;
 const GUEST_HOSTNAME = 'Riyo-WebTUIOS';
-const GUEST_DNS_SERVERS = ['1.1.1.1', '8.8.8.8'];
+const GUEST_DNS_SERVERS = ['8.8.8.8', '8.8.4.4'];
 
 let terminal;
 let fitAddon;
@@ -634,7 +634,7 @@ async function ensureGuestDns() {
     ...GUEST_DNS_SERVERS.map((server) => `nameserver ${server}`),
     'options timeout:2 attempts:3',
     ''
-  ].join('\\n');
+  ].join('\n');
 
   const escaped = resolvConf.replace(/'/g, `'\\''`);
   try {

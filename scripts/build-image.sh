@@ -94,8 +94,8 @@ printf 'Riyo-WebTUIOS\n' > "$ROOTFS/etc/hostname"
 # image. Seed resolv.conf so musl/apk has resolvers once CheerpX routes traffic
 # through Tailscale and an Exit Node. Runtime boot also refreshes this file.
 cat > "$ROOTFS/etc/resolv.conf" <<'EOF_RESOLV'
-nameserver 1.1.1.1
 nameserver 8.8.8.8
+nameserver 8.8.4.4
 options timeout:2 attempts:3
 EOF_RESOLV
 
