@@ -1,0 +1,41 @@
+name: Build WebTUIOS image
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install ext2 tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y e2fsprogs
+
+      - name: Build Alpine + TUIOS disk
+        run: ./scripts/build-image.sh
+
+      - name: Show image
+        run: |
+          ls -lh public/webtuios.ext2
+          file public/webtuios.ext2
+
+      - name: Commit generated disk image
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/webtuios.ext2
+          if git diff --cached --quiet; then
+            echo "Disk image is unchanged"
+            exit 0
+          fi
+          git commit -m "build: bundle Alpine and TUIOS disk [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

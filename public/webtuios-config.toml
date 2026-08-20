@@ -1,0 +1,19 @@
+# WebTUIOS browser profile for TUIOS v0.7.0.
+# Keep this file limited to settings supported by the pinned release.
+
+[keybindings]
+leader_key = "ctrl+b"
+
+[keybindings.terminal_mode]
+terminal_next_window = ["alt+n"]
+terminal_prev_window = ["alt+p"]
+terminal_exit_mode = ["alt+q"]
+
+[appearance]
+whichkey_enabled = true
+animations_enabled = false
+scrollback_lines = 5000
+show_clock = false
+show_cpu = false
+show_ram = false
+shared_borders = false
