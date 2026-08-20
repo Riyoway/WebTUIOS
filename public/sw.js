@@ -1,4 +1,4 @@
-const CACHE = 'webtuios-shell-v0.0.1-r3';
+const CACHE = 'webtuios-shell-v0.0.1-r4';
 const APP_SHELL = [
   '/',
   '/index.html',

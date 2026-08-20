@@ -20,6 +20,7 @@ const EXIT_NODE_DISCOVERY_TIMEOUT_MS = 20_000;
 const OUTER_SCROLLBACK_LINES = 1000;
 const HOST_GUARD_COLS = 1;
 const GUEST_HOSTNAME = 'Riyo-WebTUIOS';
+const GUEST_DNS_SERVERS = ['1.1.1.1', '8.8.8.8'];
 
 let terminal;
 let fitAddon;
@@ -622,6 +623,31 @@ async function connectNetworkBeforeBoot() {
   return waitForExitNodeBeforeBoot();
 }
 
+async function ensureGuestDns() {
+  if (!cxInstance) return;
+
+  // Alpine minirootfs is intentionally minimal and does not provide a usable
+  // resolver configuration for this standalone CheerpX environment. The
+  // Tailscale Exit Node provides the route to these public resolvers; musl/apk
+  // still needs /etc/resolv.conf to know where DNS queries should be sent.
+  const resolvConf = [
+    ...GUEST_DNS_SERVERS.map((server) => `nameserver ${server}`),
+    'options timeout:2 attempts:3',
+    ''
+  ].join('\\n');
+
+  const escaped = resolvConf.replace(/'/g, `'\\''`);
+  try {
+    await cxInstance.run('/bin/sh', [
+      '-c',
+      `printf '%s' '${escaped}' > /etc/resolv.conf`
+    ], { cwd: '/', uid: 0, gid: 0 });
+    console.info(`WebTUIOS: guest DNS configured (${GUEST_DNS_SERVERS.join(', ')}).`);
+  } catch (error) {
+    console.warn('WebTUIOS: failed to configure guest DNS', error);
+  }
+}
+
 async function boot(nerdFontReady) {
   if (!crossOriginIsolated) {
     throw new Error('Cross-origin isolation is disabled. COOP/COEP headers are required for CheerpX.');
@@ -661,7 +687,10 @@ async function boot(nerdFontReady) {
   }
 
   // Interactive login is client-only. No Vercel Function/proxy is involved.
-  await connectNetworkBeforeBoot();
+  const publicInternetReady = await connectNetworkBeforeBoot();
+  if (publicInternetReady) {
+    await ensureGuestDns();
+  }
 
   // Reset xterm's parser/wrap state after the pre-boot networking messages so
   // TUIOS always starts from a completely clean terminal state.

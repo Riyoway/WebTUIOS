@@ -53,6 +53,9 @@ See `OPTIMIZATION.md` for the audit notes.
 
 ## Client-side TCP/IP networking
 
+WebTUIOS configures `/etc/resolv.conf` with public DNS resolvers after an Exit Node becomes available. Alpine minirootfs does not inherit a host resolver configuration on its own, so this is required for `apk`, `wget`, Git, and other hostname-based network access.
+
+
 Networking stays fully CSR. CheerpX supplies the browser-side TCP/IP stack and uses Tailscale as its transport; no Vercel Function or WebTUIOS proxy is added.
 
 Normal use does not need `#authKey=...`. On a boot that needs authentication, WebTUIOS shows a terminal-only prompt. Press Enter (or click the terminal) and the Tailscale login page opens in a new tab. Later boots call `networkLogin()` again so CheerpX/Tailscale can reuse browser-side state while it remains valid.

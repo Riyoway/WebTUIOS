@@ -90,6 +90,15 @@ chmod 0755 "$ROOTFS/usr/local/bin/webtuios"
 
 printf 'Riyo-WebTUIOS\n' > "$ROOTFS/etc/hostname"
 
+# Alpine minirootfs does not carry host DNS configuration into this standalone
+# image. Seed resolv.conf so musl/apk has resolvers once CheerpX routes traffic
+# through Tailscale and an Exit Node. Runtime boot also refreshes this file.
+cat > "$ROOTFS/etc/resolv.conf" <<'EOF_RESOLV'
+nameserver 1.1.1.1
+nameserver 8.8.8.8
+options timeout:2 attempts:3
+EOF_RESOLV
+
 cat > "$ROOTFS/etc/motd" <<EOF_MOTD
 WebTUIOS
 Alpine Linux ${ALPINE_VERSION} x86 + TUIOS v${TUIOS_VERSION}
