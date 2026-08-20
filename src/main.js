@@ -18,6 +18,7 @@ const MAX_STABLE_FONT_SIZE = 16;
 const TAILSCALE_RUNNING = 6;
 const OUTER_SCROLLBACK_LINES = 1000;
 const HOST_GUARD_COLS = 1;
+const GUEST_HOSTNAME = 'Riyo-WebTUIOS';
 
 let terminal;
 let fitAddon;
@@ -400,6 +401,14 @@ function createNetworkInterface() {
       if (state === TAILSCALE_RUNNING) {
         pendingLoginUrl = null;
         networkRunningResolve(true);
+        // If authentication completed in a tab that we could not retain a
+        // WindowProxy for (COOP/noopener/popup policy), do not leave the boot
+        // sequence waiting on the local login-action promise.
+        if (loginActionResolve) {
+          const resolve = loginActionResolve;
+          loginActionResolve = null;
+          resolve('running');
+        }
       }
     },
     netmapUpdateCb(map) {
@@ -416,8 +425,24 @@ function createNetworkInterface() {
 function openPendingLogin() {
   if (!pendingLoginUrl) return false;
   const url = pendingLoginUrl;
-  const popup = window.open(url, '_blank', 'noopener,noreferrer');
+
+  // Do not pass the `noopener` window feature here. By specification that can
+  // make window.open() return null even when the tab was opened successfully,
+  // which made WebTUIOS report a false "Popup was blocked" and wait forever.
+  // Open a same-origin blank tab while we still have user activation, sever its
+  // opener explicitly, then navigate it to the Tailscale login URL.
+  const popup = window.open('about:blank', '_blank');
   if (!popup) return false;
+
+  try {
+    popup.opener = null;
+    popup.location.replace(url);
+  } catch (error) {
+    console.warn('WebTUIOS: could not navigate the Tailscale login tab', error);
+    try { popup.close(); } catch {}
+    return false;
+  }
+
   pendingLoginUrl = null;
   if (loginActionResolve) {
     const resolve = loginActionResolve;
@@ -542,6 +567,19 @@ async function boot(nerdFontReady) {
   const networkInterface = createNetworkInterface();
   cxInstance = await CheerpX.Linux.create({ mounts, networkInterface });
   attachCheerpXConsole();
+
+  // Give the guest itself a useful hostname before networking starts. CheerpX's
+  // embedded Tailscale client currently exposes no supported hostname option,
+  // so this guarantees Alpine reports Riyo-WebTUIOS even if the Tailnet node
+  // initially appears as the CheerpX/WASM default (for example, "js").
+  try {
+    await cxInstance.run('/bin/sh', [
+      '-c',
+      `printf '%s\n' '${GUEST_HOSTNAME}' > /etc/hostname; hostname '${GUEST_HOSTNAME}' 2>/dev/null || true`
+    ], { cwd: '/', uid: 0, gid: 0 });
+  } catch (error) {
+    console.warn('WebTUIOS: failed to set guest hostname', error);
+  }
 
   // Interactive login is client-only. No Vercel Function/proxy is involved.
   await connectNetworkBeforeBoot();

@@ -65,6 +65,8 @@ https://your-webtuios.example/#controlUrl=https://headscale.example.com
 
 To access the public internet (`apk`, `curl`, `git`, `ssh`, etc.), use an Exit Node in the same tailnet. Use `curl` or `wget` rather than ICMP/ping for connectivity tests.
 
+The Alpine guest hostname is `Riyo-WebTUIOS`. CheerpX's documented `NetworkInterface` API does not currently expose a Tailscale hostname option, so the Tailnet machine may initially appear with the WASM-side name `js`. Rename that machine once in the Tailscale admin console to `Riyo-WebTUIOS` and disable automatic regeneration from the OS hostname if you want the Tailnet name to stay fixed.
+
 ## PWA
 
 WebTUIOS includes a web app manifest, icons, and a small service worker, so HTTPS deployments such as Vercel can be installed as a standalone PWA.

@@ -88,6 +88,8 @@ exec /bin/sh -l
 WRAPPER
 chmod 0755 "$ROOTFS/usr/local/bin/webtuios"
 
+printf 'Riyo-WebTUIOS\n' > "$ROOTFS/etc/hostname"
+
 cat > "$ROOTFS/etc/motd" <<EOF_MOTD
 WebTUIOS
 Alpine Linux ${ALPINE_VERSION} x86 + TUIOS v${TUIOS_VERSION}
